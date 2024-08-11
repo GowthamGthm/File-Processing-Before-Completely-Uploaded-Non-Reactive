@@ -24,7 +24,7 @@ import java.util.Optional;
 public class FileService {
 
     @Autowired
-    UserRepository userRepository;
+    AsyncDbSaver asyncDbSaver;
 
 
     public ResponseEntity<Object> handleFile(HttpServletRequest request) {
@@ -57,7 +57,8 @@ public class FileService {
                         }
 
                         if(userList.size() == 1000) {
-                            saveUsersInBatch(userList);
+                            List<User> userCLoneList = new ArrayList<>(userList);
+                            asyncDbSaver.saveUsersInBatch(userCLoneList);
                             userList.clear();
                         }
                 }
@@ -75,9 +76,5 @@ public class FileService {
     }
 
 
-    @Transactional
-    protected void saveUsersInBatch(List<User> userList) {
-        userRepository.saveAllAndFlush(userList);
-    }
 
 }
