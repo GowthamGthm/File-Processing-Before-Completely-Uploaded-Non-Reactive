@@ -2,23 +2,22 @@ package com.example.demo.service;
 
 
 import com.example.demo.entity.User;
-import com.example.demo.repo.UserRepository;
 import jakarta.servlet.ServletInputStream;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.transaction.Transactional;
 import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class FileService {
@@ -26,43 +25,36 @@ public class FileService {
     @Autowired
     AsyncDbSaver asyncDbSaver;
 
+    private static final int LIST_BATCH_SIZE = 1000;
+
 
     public ResponseEntity<Object> handleFile(HttpServletRequest request) {
 
-        try (ServletInputStream inputStream = request.getInputStream()) {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-            byte[] buffer = new byte[1024];
-            int bytesRead;
+        try (ServletInputStream inputStream = request.getInputStream();
+             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
 
             String line;
             List<User> userList = new ArrayList<>();
             while ((line = reader.readLine()) != null) {
                 System.out.println(line);
 
-                if (!line.startsWith("--") && !line.contains("Content-Disposition") && !line.contains("Content-Type:")
-                        && !line.startsWith("Index,Customer phonenumber,First Name,Last Name,Company")
-                        && !StringUtils.isEmpty(line)) {
+                if (isValidLine(line)) {
+                    User user = createUserFromLine(line);
+                    if (user != null) {
+                        userList.add(user);
+                    }
 
-                        String[] rows = line.split(",");
-                        System.out.println(rows.toString());
-
-                        if(rows != null && rows.length > 0) {
-                            User user = User.builder()
-                                    .name(Optional.ofNullable(rows[1]).orElse(""))
-                                    .age(Optional.ofNullable(rows[2]).orElse(""))
-                                    .email(Optional.ofNullable(rows[3]).orElse(""))
-                                    .phoneNumber(Optional.ofNullable(rows[4]).orElse(""))
-                                    .build();
-                            userList.add(user);
-                        }
-
-                        if(userList.size() == 1000) {
-                            List<User> userCLoneList = new ArrayList<>(userList);
-                            asyncDbSaver.saveUsersInBatch(userCLoneList);
-                            userList.clear();
-                        }
+                    if (userList.size() == LIST_BATCH_SIZE) {
+                        List<User> userCLoneList = new ArrayList<>(userList);
+                        asyncDbSaver.saveUsersInBatch(userCLoneList);
+                        userList.clear();
+                    }
                 }
-
+            }
+            System.out.println("finished reading file");
+//            save remaining user list in DB
+            if (!CollectionUtils.isEmpty(userList)) {
+                asyncDbSaver.saveUsersInBatch(userList);
             }
         } catch (ClientAbortException e) {
             e.printStackTrace();
@@ -75,6 +67,27 @@ public class FileService {
 
     }
 
+    private User createUserFromLine(String line) {
+        String[] rows = line.split(",");
+//        System.out.println(Arrays.toString(rows));
+        if (rows.length >= 5) {
+            return User.builder()
+                    .name(rows[1])
+                    .age(rows[2])
+                    .email(rows[3])
+                    .phoneNumber(rows[4])
+                    .build();
+        }
+        return null;
+    }
+
+    private boolean isValidLine(String line) {
+        return (!line.startsWith("--")
+                && !line.contains("Content-Disposition")
+                && !line.contains("Content-Type:")
+                && !line.startsWith("Index,Customer phonenumber,First Name,Last Name,Company")
+                && StringUtils.hasText(line));
+    }
 
 
 }
