@@ -64,10 +64,6 @@ Thumbs.db
 # Log files
 *.log
 
-# Application-specific files
-application.properties
-application.yml
-
 # Other files
 *.class
 *.jar
