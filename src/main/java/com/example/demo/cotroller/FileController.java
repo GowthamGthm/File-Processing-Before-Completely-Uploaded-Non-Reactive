@@ -1,9 +1,13 @@
 package com.example.demo.cotroller;
 
+import com.example.demo.entity.Employee;
+import com.example.demo.entity.Managers;
 import com.example.demo.service.FileService;
+import com.example.demo.service.HikariService;
 import com.example.demo.service.JpaEmService;
 import com.example.demo.service.JpaExecutorService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.instancio.Instancio;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,7 +16,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
+
+import static org.instancio.Select.field;
 
 @RestController
 public class FileController {
@@ -25,6 +33,9 @@ public class FileController {
 
     @Autowired
     JpaExecutorService jpaExecutorService;
+
+    @Autowired
+    HikariService hikariService;
 
 
     @PostMapping("/new-post")
@@ -54,6 +65,53 @@ public class FileController {
 
         jpaEMService.flush();
 
+        return "SUCCESS";
+    }
+
+    @GetMapping("/test-jdbc")
+    public String jdbc() throws Exception {
+        for (int i = 0; i < 50; i++) {
+            List<Managers> empList = Instancio.ofList(Managers.class)
+                    .size(1000)
+                    .set(field(Managers::getId), null)
+                    .generate(field(Managers::getDeptId), gen -> gen.ints().range(1, 5))
+                    .generate(field(Managers::getAge), gen -> gen.ints().range(25, 80))
+                    .create();
+
+//            simulating error in the mid of saving , trying to save invalid foreign key
+//            if(i == (MAX- 5)) {
+//                empList.get(50).setDeptId(7);
+//            }
+
+            hikariService.saveAllJdbcBatch(empList);
+
+        }
+        return "SUCCESS";
+    }
+
+    @GetMapping("/test-jdbc-one")
+    public String jdbcOne() throws Exception {
+        List<Boolean> boolList = new ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            List<Managers> empList = Instancio.ofList(Managers.class)
+                    .size(1000)
+                    .set(field(Managers::getId), null)
+                    .generate(field(Managers::getDeptId), gen -> gen.ints().range(1, 5))
+                    .generate(field(Managers::getAge), gen -> gen.ints().range(25, 80))
+                    .create();
+
+//            simulating error in the mid of saving , trying to save invalid foreign key
+//            if(i == (MAX- 5)) {
+//                empList.get(50).setDeptId(7);
+//            }
+
+            boolean result = hikariService.saveAllJdbcBatchCallable(empList);
+            boolList.add(result);
+            if(!result) {
+
+            }
+
+        }
         return "SUCCESS";
     }
 
