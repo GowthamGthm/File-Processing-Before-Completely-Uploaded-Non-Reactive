@@ -28,14 +28,14 @@ public class HikariService {
     @Value("${spring.jpa.properties.hibernate.jdbc.batch_size}")
     private int batchSize;
 
-    public boolean saveAllJdbcBatchCallable(List<Managers> managerList) {
+    public boolean saveAllJdbcBatchCallable(List<Managers> managerList , String uuid) {
         System.out.println("insert using jdbc batch, threading");
         ExecutorService executorService = Executors.newFixedThreadPool(10);
 
         List<List<Managers>> listOfBookSub = createSubList(managerList, batchSize);
 
         List<Callable<Boolean>> callables = listOfBookSub.stream().map(sublist ->
-                        (Callable<Boolean>) () -> saveAllJdbcBatch(sublist)
+                        (Callable<Boolean>) () -> saveAllJdbcBatch(sublist , uuid)
                 ).collect(Collectors.toList());
         boolean allSuccessful = true;
 
@@ -84,11 +84,11 @@ public class HikariService {
     }
 
 
-    public boolean saveAllJdbcBatch(List<Managers> employeeList) throws Exception {
+    public boolean saveAllJdbcBatch(List<Managers> employeeList , String uuid) throws Exception {
 //        System.out.println("insert using jdbc batch");
         String sql = String.format(
-                "INSERT INTO %s (name, age, dept_id) " +
-                        "VALUES (?, ?, ?)",
+                "INSERT INTO %s (name, age, dept_id, uuid) " +
+                        "VALUES (?, ?, ?, ?)",
                 Managers.class.getAnnotation(Table.class).name()
         );
 
@@ -102,6 +102,7 @@ public class HikariService {
                 statement.setString(1, mangr.getName());
                 statement.setInt(2, mangr.getAge());
                 statement.setInt(3, mangr.getDeptId());
+                statement.setString(4, uuid);
                 statement.addBatch();
 
                 if ((counter + 1) % batchSize == 0 || (counter + 1) == employeeList.size()) {
@@ -115,6 +116,25 @@ public class HikariService {
 //            throw e;
             e.printStackTrace();
             return false;
+        }
+    }
+
+    public void delete(String uuid) throws Exception {
+        String sql = String.format(
+                "DELETE FROM  %s WHERE uuid = ?",
+                Managers.class.getAnnotation(Table.class).name()
+        );
+
+        try (Connection connection = hikariDataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)
+        ) {
+            // Set the value for the column
+            statement.setString(1, uuid);
+            // Execute the DELETE statement
+            int rowsAffected = statement.executeUpdate();
+            System.out.println("rows deleted: " + rowsAffected);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 

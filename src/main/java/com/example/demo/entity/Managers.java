@@ -26,4 +26,6 @@ public class Managers {
     @Column(name = "dept_id")
     private Integer deptId;
 
+    private String uuid;
+
 }
