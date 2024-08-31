@@ -115,7 +115,7 @@ public class FileController {
         }
 
 
-        boolean failed = boolList.stream().filter(ele -> ele).findFirst().orElse(false);
+        boolean failed = boolList.stream().filter(ele -> !ele).findFirst().orElse(false);
         if(failed) {
             System.out.println("------------------ found some failed DB calls , so clearing everything ");
             hikariService.delete(uuid);
