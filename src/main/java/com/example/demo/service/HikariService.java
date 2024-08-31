@@ -11,10 +11,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,15 +25,34 @@ public class HikariService {
     @Value("${spring.jpa.properties.hibernate.jdbc.batch_size}")
     private int batchSize;
 
-    public boolean saveAllJdbcBatchCallable(List<Managers> managerList , String uuid) {
+
+    public static final String SQL = String.format(
+            "INSERT INTO %s (name, age, dept_id, uuid) " +
+                    "VALUES (?, ?, ?, ?)",
+            Managers.class.getAnnotation(Table.class).name()
+    );
+
+    public static <T> List<List<T>> createSubList(List<T> list, int subListSize) {
+        List<List<T>> listOfSubList = new ArrayList<>();
+        for (int i = 0; i < list.size(); i += subListSize) {
+            if (i + subListSize <= list.size()) {
+                listOfSubList.add(list.subList(i, i + subListSize));
+            } else {
+                listOfSubList.add(list.subList(i, list.size()));
+            }
+        }
+        return listOfSubList;
+    }
+
+    public boolean saveAllJdbcBatchCallable(List<Managers> managerList, String uuid) throws ExecutionException, InterruptedException {
         System.out.println("insert using jdbc batch, threading");
         ExecutorService executorService = Executors.newFixedThreadPool(10);
 
-        List<List<Managers>> listOfBookSub = createSubList(managerList, batchSize);
+        List<List<Managers>> listOfBookSub = createSubList(managerList, 100);
 
         List<Callable<Boolean>> callables = listOfBookSub.stream().map(sublist ->
-                        (Callable<Boolean>) () -> saveAllJdbcBatch(sublist , uuid)
-                ).collect(Collectors.toList());
+                (Callable<Boolean>) () -> saveAllJdbcBatch(sublist, uuid)
+        ).collect(Collectors.toList());
         boolean allSuccessful = true;
 
         try {
@@ -53,11 +69,13 @@ public class HikariService {
                 } catch (Exception e) {
                     e.printStackTrace();
                     allSuccessful = false;
+                    throw e;
                 }
             }
-        } catch (InterruptedException e) {
+        } catch (InterruptedException | ExecutionException e) {
             e.printStackTrace();
             allSuccessful = false;
+            throw e;
         } finally {
             executorService.shutdown();
         }
@@ -71,29 +89,11 @@ public class HikariService {
         }
     }
 
-    public static <T> List<List<T>> createSubList(List<T> list, int subListSize){
-        List<List<T>> listOfSubList = new ArrayList<>();
-        for (int i = 0; i < list.size(); i+=subListSize) {
-            if(i + subListSize <= list.size()){
-                listOfSubList.add(list.subList(i, i + subListSize));
-            }else{
-                listOfSubList.add(list.subList(i, list.size()));
-            }
-        }
-        return listOfSubList;
-    }
-
-
-    public boolean saveAllJdbcBatch(List<Managers> employeeList , String uuid) throws Exception {
+    public boolean saveAllJdbcBatch(List<Managers> employeeList, String uuid) throws Exception {
 //        System.out.println("insert using jdbc batch");
-        String sql = String.format(
-                "INSERT INTO %s (name, age, dept_id, uuid) " +
-                        "VALUES (?, ?, ?, ?)",
-                Managers.class.getAnnotation(Table.class).name()
-        );
 
         try (Connection connection = hikariDataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)
+             PreparedStatement statement = connection.prepareStatement(SQL)
         ) {
             int counter = 0;
             for (Managers mangr : employeeList) {
@@ -113,9 +113,9 @@ public class HikariService {
             }
             return true;
         } catch (Exception e) {
-//            throw e;
             e.printStackTrace();
-            return false;
+            throw e;
+//            return false;
         }
     }
 
