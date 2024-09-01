@@ -5,6 +5,7 @@ import com.example.demo.service.FileService;
 import com.example.demo.service.HikariService;
 import com.example.demo.service.JpaEmService;
 import com.example.demo.service.JpaExecutorService;
+import com.zaxxer.hikari.HikariDataSource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.instancio.Instancio;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +16,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -36,6 +39,9 @@ public class FileController {
 
     @Autowired
     HikariService hikariService;
+
+    @Autowired
+    HikariDataSource hikariDataSource;
 
 
     @PostMapping("/new-post")
@@ -83,7 +89,7 @@ public class FileController {
 //                empList.get(50).setDeptId(7);
 //            }
 
-            hikariService.saveAllJdbcBatch(empList, UUID.randomUUID().toString());
+//            hikariService.saveAllJdbcBatch(empList, UUID.randomUUID().toString());
 
         }
         return "SUCCESS";
@@ -96,39 +102,49 @@ public class FileController {
         List<Boolean> boolList = new ArrayList<>();
         String uuid = UUID.randomUUID().toString();
 
-        try {
+        try (Connection connection = hikariDataSource.getConnection()) {
+            connection.setAutoCommit(false); // Start transaction
 
-            for (int i = 0; i < MAX; i++) {
-                List<Managers> empList = Instancio.ofList(Managers.class)
-                        .size(1000)
-                        .set(field(Managers::getId), null)
-                        .set(field(Managers::getUuid), uuid)
-                        .generate(field(Managers::getDeptId), gen -> gen.ints().range(1, 5))
-                        .generate(field(Managers::getAge), gen -> gen.ints().range(25, 80))
-                        .create();
+            try {
+                for (int i = 0; i < MAX; i++) {
+                    List<Managers> empList = Instancio.ofList(Managers.class)
+                            .size(1000)
+                            .set(field(Managers::getId), null)
+                            .set(field(Managers::getUuid), uuid)
+                            .generate(field(Managers::getDeptId), gen -> gen.ints().range(1, 5))
+                            .generate(field(Managers::getAge), gen -> gen.ints().range(25, 80))
+                            .create();
 
-//            simulating error in the mid of saving , trying to save invalid foreign key
-                if (i == (MAX - SUBTRACT)) {
-                    empList.get(555).setDeptId(7);
+//                     Simulating error in the mid of saving, trying to save invalid foreign key
+                     if (i == (MAX - SUBTRACT)) {
+                         empList.get(555).setDeptId(7);
+                     }
+
+                    boolean result = hikariService.saveAllJdbcBatchCallable(empList, uuid, connection);
+                    boolList.add(result);
                 }
 
-
-                boolean result = hikariService.saveAllJdbcBatchCallable(empList, uuid);
-                boolList.add(result);
+                boolean failed = boolList.stream().anyMatch(ele -> !ele);
+                if (failed) {
+                    System.out.println("------------------ found some failed DB calls, so clearing everything ");
+                    hikariService.delete(uuid, connection);
+                    connection.rollback(); // Rollback transaction
+                    return "FAILED";
+                } else {
+                    connection.commit(); // Commit transaction
+                    return "SUCCESS";
+                }
+            } catch (Exception e) {
+                System.out.println("found exception in one thread, so deleting everything");
+                hikariService.delete(uuid, connection);
+                connection.rollback(); // Rollback transaction
+                return "FAILED";
             }
-
-            boolean failed = boolList.stream().filter(ele -> !ele).findFirst().orElse(false);
-            if (failed) {
-                System.out.println("------------------ found some failed DB calls , so clearing everything ");
-                hikariService.delete(uuid);
-            }
-        } catch (Exception e) {
-            System.out.println("found exception in one thread , so deleting everything");
-            hikariService.delete(uuid);
+        } catch (SQLException e) {
+            e.printStackTrace();
             return "FAILED";
         }
-
-        return "SUCCESS";
     }
+
 
 }
