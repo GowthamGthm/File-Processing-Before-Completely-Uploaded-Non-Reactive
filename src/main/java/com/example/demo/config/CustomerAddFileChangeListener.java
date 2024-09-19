@@ -1,9 +1,11 @@
 package com.example.demo.config;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.devtools.filewatch.ChangedFile;
 import org.springframework.boot.devtools.filewatch.ChangedFiles;
 import org.springframework.boot.devtools.filewatch.FileChangeListener;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -17,6 +19,8 @@ import java.util.Set;
 @Component
 public class CustomerAddFileChangeListener implements FileChangeListener {
 
+    @Autowired
+    ApplicationEventPublisher  publisher;
 
     @Override
     public void onChange(Set<ChangedFiles> changeSet) {
@@ -37,7 +41,7 @@ public class CustomerAddFileChangeListener implements FileChangeListener {
 
                             Files.readString(file.getFile().toPath());
 
-
+                            publisher.publishEvent(new CredsChangeEvent(file.getFile().getAbsolutePath()));
                         }
                     } catch (IOException e) {
                         log.error("error reading file at path : {} , error: {}", file.getFile().toPath(), e);
